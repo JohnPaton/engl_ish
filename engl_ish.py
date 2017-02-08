@@ -124,26 +124,35 @@ class Distribution():
         return np.random.choice(keys, p=values)
 
 class Markov_Model():
+    '''
+    A class describing a Markov model. Each state corresponds to a Distribution
+    describing the probabilities of moving to the next state.
+    '''
     def __init__(self):
         self.model = {}
 
     def from_keys(self):
+        # The initial ("from"( states of the model
         return list(self.model.keys())
 
     def to_keys(self):
+        # The final ("to") states of the model
         s = self.from_keys()
         return list(self.model[s[0]].keys()) if s else []
 
     def add_to(self, key):
+        # Add a final ("to") state
         if key not in self.to_keys():
             for k in self.model:
                 self.model[k].add_key(key)
 
     def add_from(self, key):
+        # Add an initial ("to") state
         if key not in self.from_keys():
             self.model[key] = Distribution({k:0 for k in self.to_keys()})         
 
     def increment(self, i, f, amount = 1):
+        # increment the transition i -> f by amount
         in_to = f in self.to_keys()
         in_from = i in self.from_keys()
         
