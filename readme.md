@@ -3,7 +3,7 @@
 
 `engl_ish` uses Markov chains to simulate language, without perfectly recreating it, inspired by the video [Skwerl](https://www.youtube.com/watch?v=Vt4Dfa4fOEY). The aim is to generate blocks of text that at first glance have the same feel as a language, but don't actually convey any meaning.
 
-Please see the [blog post](https://github.com/JohnPaton/engl_ish/blob/master/blogpost.ipynb) for usage examples. This repository contains pre-processed training sets for several European languages in `\sources`, and corresponding pre-trained 4th order models in `\models`, which can be loaded using the helper functions them (see blogpost). `engl_ish.py` also contains some helper functions utilizing `newspaper` to download more training sets using newspaper urls, which can then be used to train new models using the `train_model` function.
+Please see the [blog post](https://johnpaton.github.io/posts/engl_ish/) for usage examples. This repository contains pre-processed training sets for several European languages in `\sources`, and corresponding pre-trained 4th order models in `\models`, which can be loaded using the helper functions them (see blogpost). `engl_ish.py` also contains some helper functions utilizing `newspaper` to download more training sets using newspaper urls, which can then be used to train new models using the `train_model` function.
 
 Sample output:
 
