@@ -210,7 +210,7 @@ class Language_Model():
         # reset to the highest available order
         self.order = len(self.markov_models)
 
-     def copy(self):
+    def copy(self):
         return deepcopy(self)
 
     def language_gen(self, num_sentences):
@@ -582,6 +582,7 @@ def language_gen(num_sentences, model):
         sents.append(sent)
 
     return ' '.join(sents)
+
 
 def download_newspaper(news_urls, language = 'english', pickle_sents = True):
     if type(news_urls) is str:
