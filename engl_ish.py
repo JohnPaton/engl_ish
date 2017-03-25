@@ -1,11 +1,13 @@
-from nltk import sent_tokenize, word_tokenize
+#from nltk import sent_tokenize, word_tokenize
 import numpy as np
 from matplotlib import pyplot as plt
 from copy import deepcopy
+import pandas as pd
 import random
-import newspaper
+#import newspaper
 import pickle
 import os
+import seaborn as sns
 
 class Distribution():
     '''
@@ -14,50 +16,44 @@ class Distribution():
     distribution which sums to one and is generate from the absolute dist.
     '''
     def __init__(self, abs_dict = {}):
-        self.abs = deepcopy(abs_dict)
+        self.abs = np.array(list(abs_dict.values()))
+        self.key_dict = {v:i for i,v in enumerate(abs_dict)}
         self.norm = None
         self._normalized = False
 
     def increment(self, key, amount = 1):
         # Incremet state key by amount in the absolute distribution
         # Add the key if it isn't already present
-        if key in self.abs:
-            self.abs[key] += amount
-        else:
-            self.abs[key] = amount
+        try:
+            self.abs[self.key_dict[key]] += amount
+        except KeyError:
+            self.key_dict[key] = len(self.abs)
+            self.abs = np.append(self.abs, amount)
 
         self._normalized = False
 
     def replace_abs(self, new_abs):
         # Replace the abosolute distribution
-        self.abs = deepcopy(new_abs)
+        self.abs = np.array(new_abs)
+        self._normalized = False
 
     def normalize(self):
         # Create the normalized distribution based on the current absolute one
         # Values of the normalized distribution will always sum to one
-        total = sum(self.abs.values())
-        self.norm = {}
-        for key in self.abs:
-            self.norm[key] = self.abs[key]/total
+        self.norm = self.abs/self.abs.sum()
         self._normalized = True
 
     def unzip_abs(self):
         # Unzip the absolute distribution into matching lists of keys and values
-        keys = self.keys()
-        values = [self.abs[k] for k in keys]
-
-        return keys, values
+        return self.key_dict.keys(), self.abs
 
     def unzip_norm(self):
         # Unzip the normal distribution into matching lists of keys and values
         # Update the normalized dist if it is not up to date
-        keys = self.keys()
         if not self._normalized:
             self.normalize()
-
-        values = [self.norm[k] for k in keys]
-
-        return keys, values
+            
+        return self.key_dict.keys(), self.norm
 
     def select(self, starts_with):
         # Create a new distribution by selecting only the keys that start with
@@ -76,25 +72,48 @@ class Distribution():
         # the new distribution. This is in effect the output of a markov model
         out = Distribution()
         n = len(current_state)
-        for k in self.abs.keys():
+        for k in self.keys():
             if k[0:n] == current_state:
                 out.increment(k[n], self.abs[k])
 
         return out
 
-    def plot(self):
-        # to do
-        pass
+    def plot(self, kind='bar',width=1, **kwargs):
+        # plot the distribution as a bar chart
+        # kwargs dictionary expanded into pd.Series.plot
+        self.sort()
+        
+        if not self._normalized:
+            self.normalize()
+
+        s = pd.Series({k:self.norm[self.key_dict[k]] for k in self.keys()})
+        s.plot(kind=kind, width=width, **kwargs)
+        plt.show()
 
     def total(self):
-        return sum(self.abs.values())
+        return self.abs.sum()
     
     def keys(self):
-        return sorted(list(self.abs.keys()))        
+        return sorted(self.key_dict.keys(), key=lambda k: self.key_dict[k])
+
+    def sort(self):
+        # sort the keys
+        new = np.zeros_like(self.abs)
+        keys = sorted(self.keys())
+
+        new_keys = {}
+
+        for i,k in enumerate(keys):
+            new_keys[k] = i
+            new[i] = self.abs[self.key_dict[k]]
+
+        self.abs = new
+        self.key_dict = new_keys
+        self._normalized = False
 
     def eject(self, key):
         # Remove key from the distribution
-        self.abs.pop(key)
+        self.key_dict.pop(key)
         self._normalized = False
 
     def copy(self):
@@ -104,24 +123,25 @@ class Distribution():
 
     def reset(self):
         # Reset the distribution to its initial state
-        self.abs = {k:0 for k in self.abs}
+        self.abs = np.zeros_like(self.abs)
         self.norm = None
         self._normalized = False
 
     def add_key(self, key):
         # Add a new key to the distribution with value zero
         # Equivalent to increment(key, 0)
-        self.abs[key] = 0 if key not in self.keys() else self.abs[key]
-        self._normalized = False
-
+        try:
+            self.abs[self.key_dict[key]]
+        except KeyError:
+            self.increment(key, 0)
+            
     def draw(self):
         # Draw a value from the distribution using norm as the
         # probability distribution
         if not self._normalized:
             self.normalize()
         
-        keys, values = self.unzip_norm()
-        return np.random.choice(keys, p=values)
+        return np.random.choice(self.keys(), p=self.norm)
 
 class Markov_Model():
     '''
@@ -129,59 +149,85 @@ class Markov_Model():
     describing the probabilities of moving to the next state.
     '''
     def __init__(self):
-        self.model = {}
+        self.abs = pd.DataFrame()
+        self.norm = pd.DataFrame()
+        self.from_keys = {}
+        self.to_keys = {}
+        self._normalized = False
 
     def from_keys(self):
         # The initial ("from"( states of the model
-        return list(self.model.keys())
+        return self.abs.index
 
     def to_keys(self):
         # The final ("to") states of the model
-        s = self.from_keys()
-        return list(self.model[s[0]].keys()) if s else []
+        return self.abs.columns
 
     def add_to(self, key):
         # Add a final ("to") state
-        if key not in self.to_keys():
-            for k in self.model:
-                self.model[k].add_key(key)
+        if key not in self.abs.columns:
+            self.abs[key] = np.zeros(len(self.abs),dtype=int)
+            self._normalized = False
 
     def add_from(self, key):
         # Add an initial ("to") state
-        if key not in self.from_keys():
-            self.model[key] = Distribution({k:0 for k in self.to_keys()})         
+        if key not in self.abs.index:
+            self.abs.loc[key] = np.zeros(len(self.abs.columns), dtype=int)
+            self._normalized = False
 
     def increment(self, i, f, amount = 1):
         # increment the transition i -> f by amount
-        in_to = f in self.to_keys()
-        in_from = i in self.from_keys()
-        
-        if in_to and in_from:
-            self.model[i].increment(f, amount)
-        else:
-            self.add_from(i)
+        if f not in self.abs.columns:
             self.add_to(f)
-            self.increment(i,f,amount)
+        
+        if i not in self.abs.index:
+            self.add_from(i)
+        
+        self.abs.set_value(i, f, self.abs[f][i] + amount)
+        self._normalized = False
             
     def copy(self):
         return deepcopy(self)
 
     def normalize(self):
-        for k in self.model:
-            self.model[k].normalize()
+        self.norm = self.abs.div(self.abs.sum(axis=1), axis=0)
+        self._normalized = True
 
     def get_val(self,i,f):
-        return self.model[i].abs[f]
+        # get the absolute value
+        return self.abs[f][i]
 
     def get_prob(self,i,f):
-        if not self.model[i]._normalized:
-            self.model[i].normalize()
+        # get the probability of moving from state i to state f
+        if not self._normalized:
+            self.normalize()
 
-        return self.model[i].norm[f]
+        return self.norm[f][i]
 
     def draw(self, current):
         # draw a next state based on the current state
-        return self.model[current].draw()
+        if not self._normalized:
+            self.normalize()
+        
+        return np.random.choice(self.norm.columns, p=self.norm.loc[current])
+
+    def sort(self):
+        self.abs = self.abs.sort_index(axis=0)
+        self.abs = self.abs.sort_index(axis=1)
+        self._normalized = False
+
+    def plot(self, linewidth = 0.1, **kwargs):
+        # plot the markov probability matrix as a heatmap
+        # kwargs passed to seaborn.heatmap
+        self.sort()
+        
+        if not self._normalized:
+            self.normalize()
+
+        h = sns.heatmap(self.norm, linewidth=linewidth, **kwargs)
+        h.xaxis.tick_top()
+        plt.yticks(rotation=0)
+        plt.show()
 
 class Language_Model():
     '''
@@ -193,9 +239,9 @@ class Language_Model():
         self.sent_lens = Distribution()
         self.word_lens = Distribution()
         self.char_counts = Distribution()
-        self.firsts = [Distribution() for i in range(order)]
-        self.lasts = [Distribution() for i in range(order)]
-        self.markov_models = [Markov_Model() for i in range(order)]
+        self.firsts = [Distribution() for _ in range(order)]
+        self.lasts = [Distribution() for _ in range(order)]
+        self.markov_models = [Markov_Model() for _ in range(order)]
         self.mid_cap_prob = 0.0
         self.mid_punct_prb = 0.0
         self.end_puncts = Distribution()
@@ -421,18 +467,14 @@ def language_model(sents, order):
     tenth_of_sents = np.floor(len(sents)/10)
 
     # gather the information about each sentence
-    for s_ind in range(len(sents)):
+    for s_ind, s in enumerate(sents):
         # display the progress
         if s_ind % tenth_of_sents == 0:
             print('Training progress:', int(np.round(100*(s_ind+1)/len(sents))),'percent')
 
-        s = sents[s_ind]
-
         # count the number of words (not including punctuation tokens)
         s_len = 0
-        for i in range(len(s)):
-            w = s[i]
-
+        for i,w in enumerate(s):
             if i!=0:
                 mid_word_count += 1
                 if w.isalpha() and not w.islower():
