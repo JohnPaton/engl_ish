@@ -11,11 +11,11 @@ def train_pickle_model(sents, language, order):
     print('building model')
     model = engl_ish.language_model(sents, order)
 
-    outfile = 'models\\'+language+'_'+str(order)+'_newspaper_'\
+    outfile = language+'_'+str(order)+'_newspaper_'\
               +str(len(sents))+'.pickle'
 
     # save to directory ./models
-    filepath = os.path.join(os.getcwd(), outfile)
+    filepath = os.path.join(os.getcwd(), 'models', outfile)
     with open(filepath, 'wb') as h:
         pickle.dump(model, h)
    
