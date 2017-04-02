@@ -43,20 +43,39 @@ class Distribution():
             self.norm[key] = self.abs[key]/total
         self._normalized = True
 
-    def unzip_abs(self):
+    def unzip_abs(self, max_key=None, sort=False):
         # Unzip the absolute distribution into matching lists of keys and values
-        keys = self.keys()
+        # optionally choose a maximum key value or sort keys
+        keys = self.abs.keys()
+
+        if sort:
+            keys = sorted(keys)
+
+        if max_key != None:
+            keys = list(filter(lambda k: k <= max_key, keys))
+        else:
+            keys = list(keys)
+
         values = [self.abs[k] for k in keys]
 
         return keys, values
 
-    def unzip_norm(self):
+    def unzip_norm(self, max_key=None, sort=False):
         # Unzip the normal distribution into matching lists of keys and values
         # Update the normalized dist if it is not up to date
+        # optionally choose a maximum key value  or sort keys
         if not self._normalized:
             self.normalize()
 
-        keys = self.keys()
+        keys = self.norm.keys()
+
+        if sort:
+            keys = sorted(keys)
+
+        if max_key != None:
+            keys = list(filter(lambda k: k <= max_key, keys))
+        else:
+            keys = list(keys)
 
         values = [self.norm[k] for k in keys]
 
@@ -85,9 +104,22 @@ class Distribution():
 
         return out
 
-    def plot(self):
-        # to do
-        pass
+    def plot(self, norm=True, max_key=-1, width=1, **kwargs):
+        if norm and not self._normalized:
+            self.normalize()
+
+        if max_key >= 0:
+            keys = sorted(self.keys())
+            keys = list(filter(lambda k: k <= max_key, keys))
+            if norm:
+                vals = [self.norm[k] for k in keys]
+            else:
+                vals = [self.abs[k] for k in keys]
+        else:
+            keys, vals = self.unzip_norm() if norm else self.unzip_abs()
+
+        plt.bar(keys, vals, width=width, **kwargs)
+        plt.show()
 
     def total(self):
         return sum(self.abs.values())
@@ -292,7 +324,7 @@ class Language_Model():
             if current_len == length-1:
                 word += end_puncts.draw()
 
-            # add mis-sentence punctuation with probability from model
+            # add mid-sentence punctuation with probability from model
             elif random.uniform(0,1) < mid_punct_prob:
                 word += mid_puncts.draw()
 
@@ -334,7 +366,7 @@ class Language_Model():
                 return self.word_gen(length)
 
         # start the word by drawing an initial state
-        word = firsts[-1].draw()
+        word = firsts[order-1].draw()
 
         # follow the Markov chain to generate the rest of the word
         while len(word) < length:
@@ -472,7 +504,7 @@ def language_model(sents, order):
 
         # count the number of words (not including punctuation tokens)
         s_len = 0
-        for i,w in enumerate(s):
+        for i, w in enumerate(s):
             if i!=0:
                 mid_word_count += 1
                 if w.isalpha() and not w.islower():
@@ -508,7 +540,7 @@ def language_model(sents, order):
             if i == len(s) - 1 and w in ['.','!','?']:
                 model.end_puncts.increment(w)
 
-            if w in [',',';',':','-','—']:
+            if w in [',',';',':']:
                 model.mid_puncts.increment(w)
                 mid_punct_count += 1
                     
@@ -688,5 +720,12 @@ def train_model(sents, language, order=3,pickl=False):
 def train_pickle_model(sents, language, order=3):
     import trainer
     return trainer.train_pickle_model(sents, language, order)
+
+
+
+
+
+
+
 
 
