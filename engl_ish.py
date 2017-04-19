@@ -1,11 +1,13 @@
-from nltk import sent_tokenize, word_tokenize
+#from nltk import sent_tokenize, word_tokenize
 import numpy as np
 from matplotlib import pyplot as plt
 from copy import deepcopy
+import pandas as pd
 import random
-import newspaper
+#import newspaper
 import pickle
 import os
+import seaborn as sns
 
 class Distribution():
     '''
@@ -19,7 +21,7 @@ class Distribution():
         self._normalized = False
 
     def increment(self, key, amount = 1):
-        # Incremet state key by amount in the absolute distribution
+        # Increment state key by amount in the absolute distribution
         # Add the key if it isn't already present
         if key in self.abs:
             self.abs[key] += amount
@@ -41,19 +43,39 @@ class Distribution():
             self.norm[key] = self.abs[key]/total
         self._normalized = True
 
-    def unzip_abs(self):
+    def unzip_abs(self, max_key=None, sort=False):
         # Unzip the absolute distribution into matching lists of keys and values
-        keys = self.keys()
+        # optionally choose a maximum key value or sort keys
+        keys = self.abs.keys()
+
+        if sort:
+            keys = sorted(keys)
+
+        if max_key != None:
+            keys = list(filter(lambda k: k <= max_key, keys))
+        else:
+            keys = list(keys)
+
         values = [self.abs[k] for k in keys]
 
         return keys, values
 
-    def unzip_norm(self):
+    def unzip_norm(self, max_key=None, sort=False):
         # Unzip the normal distribution into matching lists of keys and values
         # Update the normalized dist if it is not up to date
-        keys = self.keys()
+        # optionally choose a maximum key value  or sort keys
         if not self._normalized:
             self.normalize()
+
+        keys = self.norm.keys()
+
+        if sort:
+            keys = sorted(keys)
+
+        if max_key != None:
+            keys = list(filter(lambda k: k <= max_key, keys))
+        else:
+            keys = list(keys)
 
         values = [self.norm[k] for k in keys]
 
@@ -82,15 +104,28 @@ class Distribution():
 
         return out
 
-    def plot(self):
-        # to do
-        pass
+    def plot(self, norm=True, max_key=-1, width=1, **kwargs):
+        if norm and not self._normalized:
+            self.normalize()
+
+        if max_key >= 0:
+            keys = sorted(self.keys())
+            keys = list(filter(lambda k: k <= max_key, keys))
+            if norm:
+                vals = [self.norm[k] for k in keys]
+            else:
+                vals = [self.abs[k] for k in keys]
+        else:
+            keys, vals = self.unzip_norm() if norm else self.unzip_abs()
+
+        plt.bar(keys, vals, width=width, **kwargs)
+        plt.show()
 
     def total(self):
         return sum(self.abs.values())
     
     def keys(self):
-        return sorted(list(self.abs.keys()))        
+        return list(self.abs.keys())     
 
     def eject(self, key):
         # Remove key from the distribution
@@ -111,8 +146,7 @@ class Distribution():
     def add_key(self, key):
         # Add a new key to the distribution with value zero
         # Equivalent to increment(key, 0)
-        self.abs[key] = 0 if key not in self.keys() else self.abs[key]
-        self._normalized = False
+        self.increment(key, 0)
 
     def draw(self):
         # Draw a value from the distribution using norm as the
@@ -123,6 +157,7 @@ class Distribution():
         keys, values = self.unzip_norm()
         return np.random.choice(keys, p=values)
 
+
 class Markov_Model():
     '''
     A class describing a Markov model. Each state corresponds to a Distribution
@@ -130,6 +165,7 @@ class Markov_Model():
     '''
     def __init__(self):
         self.model = {}
+        self._normalized = False
 
     def from_keys(self):
         # The initial ("from"( states of the model
@@ -142,26 +178,29 @@ class Markov_Model():
 
     def add_to(self, key):
         # Add a final ("to") state
-        if key not in self.to_keys():
-            for k in self.model:
-                self.model[k].add_key(key)
+        for k in self.model:
+            self.model[k].add_key(key)
+        self._normalized = False
 
     def add_from(self, key):
         # Add an initial ("to") state
-        if key not in self.from_keys():
+        if key not in self.model:
+            self._normalized = False
             self.model[key] = Distribution({k:0 for k in self.to_keys()})         
 
     def increment(self, i, f, amount = 1):
         # increment the transition i -> f by amount
-        in_to = f in self.to_keys()
-        in_from = i in self.from_keys()
-        
-        if in_to and in_from:
-            self.model[i].increment(f, amount)
-        else:
+        in_from = i in self.model
+        if not in_from:
             self.add_from(i)
+
+        in_to = f in self.model[i].abs
+        if not in_to:
             self.add_to(f)
-            self.increment(i,f,amount)
+        
+        self._normalized = False
+
+        self.model[i].increment(f, amount)
             
     def copy(self):
         return deepcopy(self)
@@ -169,6 +208,8 @@ class Markov_Model():
     def normalize(self):
         for k in self.model:
             self.model[k].normalize()
+
+        self._normalized = True
 
     def get_val(self,i,f):
         return self.model[i].abs[f]
@@ -183,6 +224,32 @@ class Markov_Model():
         # draw a next state based on the current state
         return self.model[current].draw()
 
+    def to_df(self):
+        # return the probability model as a pandas dataframe, with from states as rows
+        # and to states as columns
+
+        if not self._normalized:
+            self.normalize()
+
+        from_keys = sorted(self.from_keys())
+        to_keys = sorted(self.to_keys())
+
+        data = np.zeros((len(from_keys), len(to_keys)))
+
+        for i, from_key in enumerate(from_keys):
+            for j, to_key in enumerate(to_keys):
+                data[i,j] = self.model[from_key].norm[to_key]
+
+        return pd.DataFrame(data, columns = to_keys, index = from_keys)
+
+
+
+    def plot(self, linewidth = 0.1, **kwargs):
+        # to do
+        # plot the markov probability matrix as a heatmap
+        # kwargs passed to seaborn.heatmap
+        pass
+
 class Language_Model():
     '''
     A class describing a complete language model. Train the model using the
@@ -193,11 +260,11 @@ class Language_Model():
         self.sent_lens = Distribution()
         self.word_lens = Distribution()
         self.char_counts = Distribution()
-        self.firsts = [Distribution() for i in range(order)]
-        self.lasts = [Distribution() for i in range(order)]
-        self.markov_models = [Markov_Model() for i in range(order)]
+        self.firsts = [Distribution() for _ in range(order)]
+        self.lasts = [Distribution() for _ in range(order)]
+        self.markov_models = [Markov_Model() for _ in range(order)]
         self.mid_cap_prob = 0.0
-        self.mid_punct_prb = 0.0
+        self.mid_punct_prob = 0.0
         self.end_puncts = Distribution()
         self.mid_puncts = Distribution()
         self.singles = Distribution()
@@ -257,7 +324,7 @@ class Language_Model():
             if current_len == length-1:
                 word += end_puncts.draw()
 
-            # add mis-sentence punctuation with probability from model
+            # add mid-sentence punctuation with probability from model
             elif random.uniform(0,1) < mid_punct_prob:
                 word += mid_puncts.draw()
 
@@ -299,7 +366,7 @@ class Language_Model():
                 return self.word_gen(length)
 
         # start the word by drawing an initial state
-        word = firsts[-1].draw()
+        word = firsts[order-1].draw()
 
         # follow the Markov chain to generate the rest of the word
         while len(word) < length:
@@ -311,7 +378,7 @@ class Language_Model():
             # try to choose the next letter
             while not new_letter:
                 # get the appropriate distribution from the Markov model
-                if current_state in models[current_order-1].from_keys():
+                if current_state in models[current_order-1].model:
                     d = models[current_order-1].model[current_state]
 
                     # if we're close to the end of the word, take endings
@@ -341,6 +408,10 @@ class Language_Model():
             return word
         else:
             return self.word_gen(length)
+        
+    def to_df(self, order=1):
+        return self.markov_models[order-1].to_df()
+        
 
    
 
@@ -377,19 +448,24 @@ def load_sentences(text, language='english'):
 def modulate_dist(a,b):
     # modulate two distributions by multiplying them together and renormalizing
     c = Distribution()
-    a_keys = set(a.keys())
-    b_keys = set(b.keys())
-    not_shared = a_keys.symmetric_difference(b_keys)
-    shared = a_keys.intersection(b_keys)
 
-    # pad with zeros
-    for k in not_shared:
-        c.increment(k, 0)
+    d = {}
+    # multiply or add items from a
+    for k, v in a.abs.items():
+        try:
+            d[k] = v*b[k]
+        except:
+            d[k] = v
 
-    for k in shared:
-        c.increment(k, a.abs[k]*b.abs[k])
+    # add remaining items from b
+    for k, v in b.abs.items():
+        if k not in d:
+            d[k] = v
+
+    c = Distribution(d)
 
     c.normalize()
+
     return c
 
 def capitalize(s):
@@ -421,18 +497,14 @@ def language_model(sents, order):
     tenth_of_sents = np.floor(len(sents)/10)
 
     # gather the information about each sentence
-    for s_ind in range(len(sents)):
+    for s_ind, s in enumerate(sents):
         # display the progress
         if s_ind % tenth_of_sents == 0:
             print('Training progress:', int(np.round(100*(s_ind+1)/len(sents))),'percent')
 
-        s = sents[s_ind]
-
         # count the number of words (not including punctuation tokens)
         s_len = 0
-        for i in range(len(s)):
-            w = s[i]
-
+        for i, w in enumerate(s):
             if i!=0:
                 mid_word_count += 1
                 if w.isalpha() and not w.islower():
@@ -468,7 +540,7 @@ def language_model(sents, order):
             if i == len(s) - 1 and w in ['.','!','?']:
                 model.end_puncts.increment(w)
 
-            if w in [',',';']:
+            if w in [',',';',':']:
                 model.mid_puncts.increment(w)
                 mid_punct_count += 1
                     
@@ -636,10 +708,10 @@ def train_model(sents, language, order=3,pickl=False):
     model = language_model(sents, order)
 
     if pickl:
-        outfile = 'models\\'+language+'_'+str(order)+'_newspaper_'\
+        outfile = language+'_'+str(order)+'_newspaper_'\
                   +str(len(sents))+'.pickle'
 
-        filepath = os.path.join(os.getcwd(), outfile)
+        filepath = os.path.join(os.getcwd(), 'models', outfile)
         with open(filepath, 'wb') as h:
             pickle.dump(model, h)
    
@@ -648,5 +720,12 @@ def train_model(sents, language, order=3,pickl=False):
 def train_pickle_model(sents, language, order=3):
     import trainer
     return trainer.train_pickle_model(sents, language, order)
+
+
+
+
+
+
+
 
 
